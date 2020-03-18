@@ -2598,7 +2598,7 @@ describe('Merge', function() {
           _.defaults(
             {
               sides: increasedSides(doc.sides, this.side, 1),
-              _deleted: true
+              deleted: true
             },
             _.omit(doc, ['_rev'])
           )
@@ -2625,7 +2625,7 @@ describe('Merge', function() {
           _.defaults(
             {
               sides: increasedSides(doc.sides, this.side, 1),
-              _deleted: true
+              deleted: true
             },
             _.omit(doc, ['_rev'])
           )
@@ -2666,28 +2666,28 @@ describe('Merge', function() {
           _.defaults(
             {
               sides: increasedSides(subsubsubfile.sides, this.side, 1),
-              _deleted: true
+              deleted: true
             },
             _.omit(subsubsubfile, ['_rev'])
           ),
           _.defaults(
             {
               sides: increasedSides(subsubdir.sides, this.side, 1),
-              _deleted: true
+              deleted: true
             },
             _.omit(subsubdir, ['_rev'])
           ),
           _.defaults(
             {
               sides: increasedSides(subdir.sides, this.side, 1),
-              _deleted: true
+              deleted: true
             },
             _.omit(subdir, ['_rev'])
           ),
           _.defaults(
             {
               sides: increasedSides(doc.sides, this.side, 1),
-              _deleted: true
+              deleted: true
             },
             _.omit(doc, ['_rev'])
           )
@@ -2718,7 +2718,7 @@ describe('Merge', function() {
             _.defaults(
               {
                 sides: increasedSides(was.sides, this.side, 1),
-                _deleted: true
+                deleted: true
               },
               _.omit(was, ['_rev'])
             )

@@ -49,6 +49,25 @@ export type SyncMode =
   | "full";
 */
 
+const isMarkedForDeletion = (doc /*: Metadata */) => {
+  // During a transition period, we'll need to consider both documents with the
+  // deletion marker and documents which were deleted but not yet synced before
+  // the application was updated and are thus completely _deleted from PouchDB.
+  return doc.deleted || doc._deleted
+}
+
+// This method lets us completely erase a document from PouchDB after the
+// propagation of a deleted doc while removing all attributes that could get
+// picked up by the Sync the next time the document shows up in the changesfeed
+// (erasing documents generates changes) and thus result in an attempt to take
+// action.
+const eraseDocument = async (
+  { _id, _rev } /*: Metadata */,
+  { pouch } /*: { pouch: Pouch } */
+) => {
+  await pouch.db.put({ _id, _rev, _deleted: true })
+}
+
 // Sync listens to PouchDB about the metadata changes, and calls local and
 // remote sides to apply the changes on the filesystem and remote CouchDB
 // respectively.
@@ -307,6 +326,9 @@ class Sync {
 
     if (metadata.shouldIgnore(doc, this.ignore)) {
       return this.pouch.setLocalSeqAsync(change.seq)
+    } else if (!metadata.wasSynced(doc) && isMarkedForDeletion(doc)) {
+      eraseDocument(doc, this)
+      return this.pouch.setLocalSeqAsync(change.seq)
     }
 
     // FIXME: Acquire lock for as many changes as possible to prevent next huge
@@ -332,12 +354,13 @@ class Sync {
         // and especially avoid deep nesting levels.
         delete doc.moveFrom
         delete doc.overwrite
+        if (doc.deleted) eraseDocument(doc, this)
       }
 
       log.trace({ path, seq }, `Applied change on ${sideName} side`)
       await this.pouch.setLocalSeqAsync(change.seq)
-      if (!change.doc._deleted) {
-        await this.updateRevs(change.doc, sideName)
+      if (doc.sides) {
+        await this.updateRevs(doc, sideName)
       }
     } catch (err) {
       await this.handleApplyError(change, sideName, err)
@@ -381,7 +404,7 @@ class Sync {
       }
     } else if (doc.docType !== 'file' && doc.docType !== 'folder') {
       throw new Error(`Unknown docType: ${doc.docType}`)
-    } else if (doc._deleted && rev === 0) {
+    } else if (isMarkedForDeletion(doc) && rev === 0) {
       // do nothing
     } else if (doc.moveTo != null) {
       log.debug(
@@ -413,7 +436,7 @@ class Sync {
       ) {
         await side.overwriteFileAsync(doc, doc) // move & update
       }
-    } else if (doc._deleted) {
+    } else if (isMarkedForDeletion(doc)) {
       log.debug({ path: doc.path }, `Applying ${doc.docType} deletion`)
       if (doc.docType === 'file') await side.trashAsync(doc)
       else await side.deleteFolderAsync(doc)
@@ -588,7 +611,13 @@ class Sync {
     doc /*: Metadata */,
     side /*: SideName */
   ) /*: Promise<*> */ {
-    metadata.markAsUpToDate(doc)
+    if (doc.remote != null) {
+      metadata.markAsUpToDate(doc)
+    } else if (doc.sides && doc.sides.remote != null) {
+      // Avoid Metadata has sides.remote but no remote error when saving an
+      // erased document.
+      delete doc.sides.remote
+    }
     try {
       await this.pouch.put(doc)
     } catch (err) {
