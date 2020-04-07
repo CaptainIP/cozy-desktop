@@ -327,7 +327,7 @@ class Sync {
     if (metadata.shouldIgnore(doc, this.ignore)) {
       return this.pouch.setLocalSeqAsync(change.seq)
     } else if (!metadata.wasSynced(doc) && isMarkedForDeletion(doc)) {
-      eraseDocument(doc, this)
+      await eraseDocument(doc, this)
       return this.pouch.setLocalSeqAsync(change.seq)
     }
 
@@ -349,17 +349,20 @@ class Sync {
         }
       } else {
         await this.applyDoc(doc, side, sideName, rev)
-        // Clean up documents so that we don't mistakenly take action based on
-        // previous changes and keep our Pouch documents as small as possible
-        // and especially avoid deep nesting levels.
-        delete doc.moveFrom
-        delete doc.overwrite
-        if (doc.deleted) eraseDocument(doc, this)
       }
 
-      log.trace({ path, seq }, `Applied change on ${sideName} side`)
       await this.pouch.setLocalSeqAsync(change.seq)
-      if (doc.sides) {
+      log.trace({ path, seq }, `Applied change on ${sideName} side`)
+
+      // Clean up documents so that we don't mistakenly take action based on
+      // previous changes and keep our Pouch documents as small as possible
+      // and especially avoid deep nesting levels.
+      if (doc.deleted) {
+        await eraseDocument(doc, this)
+      } else {
+        delete doc.moveFrom
+        delete doc.overwrite
+        // We also update the sides in case the document is not erased
         await this.updateRevs(doc, sideName)
       }
     } catch (err) {
@@ -611,13 +614,7 @@ class Sync {
     doc /*: Metadata */,
     side /*: SideName */
   ) /*: Promise<*> */ {
-    if (doc.remote != null) {
-      metadata.markAsUpToDate(doc)
-    } else if (doc.sides && doc.sides.remote != null) {
-      // Avoid Metadata has sides.remote but no remote error when saving an
-      // erased document.
-      delete doc.sides.remote
-    }
+    metadata.markAsUpToDate(doc)
     try {
       await this.pouch.put(doc)
     } catch (err) {
